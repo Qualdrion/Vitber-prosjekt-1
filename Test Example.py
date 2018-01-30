@@ -1,92 +1,19 @@
-import numpy as np
-from math import *
-from matplotlib import pyplot as plt
-import pickle
-import scipy.special as ss
 import sympy as sy
+import numpy as np
+import scipy.special as ss
+import math
 
-def fredholm_rhs (xc, F):
-    '''Set up the RHS of the system
-    INPUT :
-        xc : defines collocation points
-        F : function defining the geological survey measurements
-    OUTPUT:
-        vector defining the RHS of the system'''
-    Nc = len(xc)
-    b = np.zeros(Nc)
-    for i in range(Nc):
-        b[i] = F(xc[i], 0.025)
-    return b
+"""
+In this example we construct an approximation
+to the integral
 
-def fredholm_lhs (xc, xs, xq, w, K):
-    '''
-    Set up the LHS of the system
-    INPUT:
-    xc: collocation points
-    xs: source points
-    xq, w: numerical quadrature
-    K: integral kernel
-    OUTPUT:
-    matrix defining the LHS of the system'''
-    Nc = len(xc)
-    Ns = len(xs)
-    A = np.zeros((Nc, Ns))
-    #FIXIT : implement the function!
-    for i in range(Nc):
-        for j in range(Ns):
-            for k in range(len(xq)):
-                A[i][j] += K(xc[i], xq[k]) * w[k] * Lagrange_Basis(j, xq[k], xs, Ns)
-    return A
+int_a^b K(x,y) rho(y) dy
 
-def Chebyshev(n):
-    a = []
-    for i in range(1, n+1):
-        a.append(0.5 + 0.5*cos(pi*(2*i-1)/(2*n)))
-    return a
-
-def Trapezoid(n):
-    xq = []
-    w = []
-    for i in range(n+1):
-        xq.append(i/n)
-        if i == 0 or i == n:
-            w.append(0.5/n)
-        else:
-            w.append(1/n)
-    return xq, w
-
-def Lagrange_Basis (j, xq, xs, ran):
-    L = 1
-    for i in range(ran):
-        if j != i:
-            L *= (xq-xs[i])/(xs[j]-xs[i])
-    return L
-
-def Density(a):
-    p = []
-    for i in range(len(a)):
-        p.append(sin(3*pi*a[i])*exp(-2*a[i]))
-    return p
-
-def Gen_Error(n, p, xc, xs, K, F):
-    x = []
-    y = []
-    b = fredholm_rhs(xc, F)
-    for i in range(1, 20):
-        xq, w = Trapezoid(10*i)
-        x.append(10*i)
-        A = fredholm_lhs(xc, xs, xq, w, K)
-        Ap = np.dot(A, p).tolist()
-        r = []
-        for j in range(len(Ap)):
-            r.append(abs(Ap[j]-b[j]))
-        y.append(max(r))
-    return x, y
-
-
-def Plot_func(x, y):
-    plt.plot(x, y)
-    plt.show()
+as described in the appendix A of the project desctiption;
+that is, we perform a Taylor series expansion of rho(),
+and then use the special function representation of the
+integral over polynomial.
+"""
 
 class analytical_solution:
     """
@@ -157,9 +84,56 @@ class analytical_solution:
                 (self.antideriv(self.b-x_eval,d,n)-self.antideriv(self.a-x_eval,d,n))
         return F_eval
 
-a = Chebyshev(40)
-p = Density(a)
-K = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
-F = pickle.load( open( "F.pkl", "rb" ) )
-x, y = Gen_Error(100, p, a, a, K, F)
-Plot_func(x, y)
+
+if __name__=='__main__':
+    import matplotlib.pyplot as plt
+    import time
+    import pickle
+
+    #
+    # integration limits
+    a = 0
+    b = 1
+    # d is the distance from the measurements in the kernel
+    d = 2.5E-02
+    # we use rho(y) = exp(gamma*y)*sin(omega*y) as an example
+    gamma = -2
+    omega = 3*np.pi
+    # maximal order of the Taylor series expansion
+    Nmax  = 75
+    # evaluate the integral expression at x_eval
+    N_eval = 50
+    x_eval = np.linspace(a,b,N_eval)
+    start_t= time.time()
+    F      = analytical_solution(a,b,omega,gamma,Nmax)
+    end_t  = time.time()
+    print("Initialization took %f s." % (end_t-start_t))
+    # Since the initialization is slow, we can store
+    # the object in a file (pickle it).
+    pickle.dump( F, open( "F.pkl", "wb" ) )
+
+    # ... much later, in a galaxy far, far away
+
+    start_t= time.time()
+    # Now, whenever we want, we can simply load the object from file
+    # and use it
+    try:
+        F = pickle.load( open( "F.pkl", "rb" ) )
+    except:
+        F = analytical_solution(a,b,omega,gamma,Nmax)
+
+    F_eval = F(x_eval,d)
+    end_t  = time.time()
+    print("First evaluation took %f s" % (end_t-start_t))
+
+    start_t= time.time()
+    F_eval2= F(x_eval,d)
+    end_t  = time.time()
+    print("Second evaluation took %f s" % (end_t-start_t))
+
+    # finally, plot the function
+    plt.plot(x_eval,F_eval2, 'k')
+    plt.xlabel('x')
+    plt.ylabel('F(x)')
+    plt.grid(True)
+    plt.show()
