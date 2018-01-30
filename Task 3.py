@@ -32,11 +32,7 @@ def fredholm_lhs (xc, xs, xq, w, K):
     for i in range(Nc):
         for j in range(Ns):
             for k in range(len(xq)):
-                L = 1
-                for m in range(Ns):
-                    if m != j:
-                        L = L * (xq[k]-xs[m])/(xs[j]-xs[m])
-                A[i][j] += K(xc[i], xq[k]) * L * w[k]
+                A[i][j] += K(xc[i], xq[k]) * w[k] * Lagrange_Basis(j, xq[k], xs, Ns)
     return A
 
 def Chebyshev(n):
@@ -51,10 +47,17 @@ def Trapezoid(n):
     for i in range(n+1):
         xq.append(i/n)
         if i == 0 or i == n:
-            w.append(0.5)
+            w.append(0.5/n)
         else:
-            w.append(1)
+            w.append(1/n)
     return xq, w
+
+def Lagrange_Basis (j, xq, xs, ran):
+    L = 1
+    for i in range(ran):
+        if j != i:
+            L *= (xq-xs[i])/(xs[j]-xs[i])
+    return L
 
 def Density(a):
     p = []
@@ -71,8 +74,9 @@ def Gen_Error(n, p, xc, xs, K, F):
         Ap = np.dot(A, p).tolist()
         r = []
         for j in range(len(Ap)):
-            r.append(Ap[j]-b[j])
+            r.append(abs(Ap[j]-b[j]))
         y.append(max(r))
+    print(b)
     return y
 
 
@@ -84,6 +88,6 @@ def Plot_func(y):
 a = Chebyshev(40)
 p = Density(a)
 K = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
-F = lambda x: (1-x)/(0.025*(0.025**2+(x-1)**2)**(1/2)) - (-x)/(0.025*(0.025**2+(x)**2)**(1/2))
+F = lambda x: (1-x)/(0.025*sqrt(0.025**2+(x-1)**2)) - (-x)/(0.025*sqrt(0.025**2+x**2))
 y = Gen_Error(100, p, a, a, K, F)
 Plot_func(y)
