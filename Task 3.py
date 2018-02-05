@@ -4,6 +4,7 @@ from matplotlib import pyplot as plt
 import pickle
 import scipy.special as ss
 import sympy as sy
+from Test_Example import analytical_solution
 
 def fredholm_rhs (xc, F):
     '''Set up the RHS of the system
@@ -55,6 +56,12 @@ def Trapezoid(n):
             w.append(1/n)
     return xq, w
 
+def Legendre(n):
+    x1, w1 = np.polynomial.legendre.leggauss(n)
+    xq = [0.5*(x+1) for x in x1]
+    w = [0.5*x for x in w1]
+    return xq, w
+
 def Lagrange_Basis (j, xq, xs, ran):
     L = 1
     for i in range(ran):
@@ -68,13 +75,14 @@ def Density(a):
         p.append(sin(3*pi*a[i])*exp(-2*a[i]))
     return p
 
-def Gen_Error(n, p, xc, xs, K, F):
+def Gen_Error(p, xc, xs, K, F, method):
     x = []
     y = []
     b = fredholm_rhs(xc, F)
-    for i in range(1, 20):
-        xq, w = Trapezoid(10*i)
-        x.append(10*i)
+    for i in range(1, 9):
+        print(i)
+        xq, w = method(2**i)
+        x.append(2**i)
         A = fredholm_lhs(xc, xs, xq, w, K)
         Ap = np.dot(A, p).tolist()
         r = []
@@ -83,83 +91,106 @@ def Gen_Error(n, p, xc, xs, K, F):
         y.append(max(r))
     return x, y
 
+def Gen_Error_p(start, end, K, F, method):
+    x = []
+    y = []
+    for i in range(start, end+1):
+        print(i)
+        xc = Chebyshev(i)
+        b = fredholm_rhs(xc, F)
+        xq, w = method(i**2)
+        A = fredholm_lhs(xc, xc, xq, w, K)
+        p = np.linalg.solve(A, b)
+        p2 = Density(xc)
+        r = []
+        for j in range(len(p)):
+            r.append(abs(p[j]-p2[j]))
+        x.append(i)
+        y.append(max(r))
+    return x, y
 
-def Plot_func(x, y):
-    plt.plot(x, y)
+def Gen_Perturbed(n, F):
+    x = []
+    y = []
+    xc = Chebyshev(n)
+    b = fredholm_rhs(xc, F)
+    b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
+    plt.plot(xc, b)
+    plt.plot(xc, b2)
     plt.show()
 
-class analytical_solution:
-    """
-    Evaluate the approximation to the force measurement
-    corresponding to rho(x) = sin(omega*x) exp(gamma x)
-    based on Nmax Taylor series terms.
-    We do Taylor series expansion at (a+b)/2.
-    Distance from the measurements to the mass density is d.
-    """
-    def __init__(self,a,b,omega,gamma,Nmax):
-        import time
-        """
-        Initialize the object: do the Taylor series expansion etc
-        """
-        self.a = a
-        self.b = b
+def Gen_plot_perturbed(n, F, K, method):
+    xc = Chebyshev(n)
+    b = fredholm_rhs(xc, F)
+    b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
+    xq, w = method(10*n)
+    A = fredholm_lhs(xc, xc, xq, w, K)
+    p1 = np.linalg.solve(A, b)
+    p2 = np.linalg.solve(A, b2)
+    p3 = Density(xc)
+    plt.plot(xc, p1)
+    plt.plot(xc, p2)
+    plt.plot(xc, p3)
+    plt.show()
 
-        # define symbols
-        x,y,u = sy.symbols('x y u', real=True)
-        # define a density function we want to integrate
-        rho = sy.sin(omega*y) * sy.exp(gamma*y)
-        #
-        # make a Taylor series expansion of this density
-        # up to Nmax terms
-        rho_taylor = sy.series(rho,y,(a+b)/2,Nmax).removeO()
-        # Now we substitute y=u+x and represent the result as a polynomial wrt u
-        pu_coeffs = rho_taylor.subs(y,u+x).as_poly(u).all_coeffs()
-        self.pu_coeffs_str = []
-        for coeff in pu_coeffs:
-            self.pu_coeffs_str.append(str(coeff))
-        # for evaluation we would like to convert these functions
-        # to lambda-function, but those cannot be stored (pickled)
-        # we will store the lambda functions in the following list:
-        self.cns = []
+def Tikhonov(n, F, K, method):
+    xc = Chebyshev(n)
+    b = fredholm_rhs(xc, F)
+    b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
+    xq, w = method(10*n)
+    A = fredholm_lhs(xc, xc, xq, w, K)
+    p1 = Density(xc)
+    e = []
+    l = []
+    for i in range(-14, 2):
+        p = []
+        print(i)
+        lhs = np.dot(A.T, A) + np.dot(10**i, np.identity(n))
+        rhs = np.dot(A.T, b)
+        p.append(np.linalg.solve(lhs, rhs))
+        r = []
+        for j in range(len(p)):
+            r.append(abs(p[j]-p1[j]))
+        e.append(max(r[0].tolist()))
+        l.append(10**i)
+    plt.plot(l, e)
+    plt.xscale('log')
+    plt.yscale('log')
+    plt.show()
 
-    def perform_lambdification(self):
-        """
-        Convert the extracted Taylor series coefficients
-        to efficiently evaluatable functions
-        """
-        x = sy.symbols('x')
-        self.cns = []
-        for n in range(len(self.pu_coeffs_str)):
-            # extract the polynomial coefficient corresponding to u^n as a function of x
-            pu_coeff_n = sy.sympify(self.pu_coeffs_str[-1-n])
-            cn = sy.lambdify(x,pu_coeff_n,"numpy")
-            self.cns.append(cn)
+def Plot_func(x, y):
+    for yi in y:
+        plt.plot(x, yi)
+    plt.yscale('log')
+    plt.show()
 
-    def antideriv(selv,u,d,n):
-        """
-        Antiderivative of  u^n/(d^2+u^2)^1.5
-        """
-        return u**(n+1)  * ss.gamma(n/2+0.5)/      \
-               (2 * d**3 * ss.gamma(n/2+1.5)) *    \
-               ss.hyp2f1(1.5,n/2+0.5,n/2+1.5,-(u/d)**2)
 
-    def __call__(self,x_eval,d):
-        """
-        Evaluate the initialized object at x_eval
-        """
-        if self.cns == []:
-            self.perform_lambdification()
-        if np.isscalar(x_eval):
-            x_eval = np.array([x_eval])
-        F_eval = np.zeros_like(x_eval)
-        for n in range(len(self.cns)):
-            F_eval = F_eval + d*self.cns[n](x_eval) * \
-                (self.antideriv(self.b-x_eval,d,n)-self.antideriv(self.a-x_eval,d,n))
-        return F_eval
-
-a = Chebyshev(40)
+'''a = Chebyshev(40)
 p = Density(a)
 K = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
 F = pickle.load( open( "F.pkl", "rb" ) )
-x, y = Gen_Error(100, p, a, a, K, F)
-Plot_func(x, y)
+x, y1 = Gen_Error(p, a, a, K, F, Legendre)
+x, y2 = Gen_Error(p, a, a, K, F, Trapezoid)
+y = [y1, y2]
+Plot_func(x, y)'''
+
+
+'''K1 = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
+K2 = lambda x, y: 0.25 * (0.25**2 + (y-x)**2)**(-3/2)
+K3 = lambda x, y: 2.5 * (2.5**2 + (y-x)**2)**(-3/2)
+F = pickle.load( open( "F.pkl", "rb" ) )
+x, y1 = Gen_Error_p(5, 30, K1, F, Legendre)
+x, y2 = Gen_Error_p(5, 30, K2, F, Legendre)
+x, y3 = Gen_Error_p(5, 30, K3, F, Legendre)
+y = [y1, y2, y3]
+Plot_func(x, y)'''
+
+'''F = pickle.load( open( "F.pkl", "rb" ) )
+Gen_Perturbed(30, F)'''
+
+K1 = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
+K2 = lambda x, y: 0.25 * (0.25**2 + (y-x)**2)**(-3/2)
+K3 = lambda x, y: 2.5 * (2.5**2 + (y-x)**2)**(-3/2)
+F = pickle.load( open( "F.pkl", "rb" ) )
+#Gen_plot_perturbed(30, F, K3, Legendre)
+Tikhonov(30, F, K3, Legendre)
