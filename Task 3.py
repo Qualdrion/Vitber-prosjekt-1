@@ -45,6 +45,12 @@ def Chebyshev(n):
         a.append(0.5 + 0.5*cos(pi*(2*i-1)/(2*n)))
     return a
 
+def Chebyshev2(n, a, b):
+    r = []
+    for i in range(1, n+1):
+        r.append(0.5*(a+b)+0.5*(a-b)*cos(pi*(2*i-1)/(2*n)))
+    return r
+
 def Trapezoid(n):
     xq = []
     w = []
@@ -60,6 +66,12 @@ def Legendre(n):
     x1, w1 = np.polynomial.legendre.leggauss(n)
     xq = [0.5*(x+1) for x in x1]
     w = [0.5*x for x in w1]
+    return xq, w
+
+def Legendre2(n, a, b):
+    x1, w1 = np.polynomial.legendre.leggauss(n)
+    xq = [((b-a)*x+b+a)/2 for x in x1]
+    w = [0.5*(b-a)*x for x in w1]
     return xq, w
 
 def Lagrange_Basis (j, xq, xs, ran):
@@ -90,6 +102,12 @@ def Gen_Error(p, xc, xs, K, F, method):
             r.append(abs(Ap[j]-b[j]))
         y.append(max(r))
     return x, y
+
+def Plot_func(x, y):
+    for yi in y:
+        plt.plot(x, yi)
+    plt.yscale('log')
+    plt.show()
 
 def Gen_Error_p(start, end, K, F, method, d):
     x = []
@@ -131,7 +149,6 @@ def Gen_plot_perturbed(n, F, K, method, d):
     plt.plot(xc, p1)
     plt.plot(xc, p2)
     plt.plot(xc, p3)
-    plt.yscale('log')
     plt.show()
 
 def Tikhonov(n, F, K, method, d):
@@ -143,31 +160,47 @@ def Tikhonov(n, F, K, method, d):
     p1 = Density(xc)
     e = []
     l = []
+    #for i in range(-14, 2):
+    b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
+    e = []
+    l = []
     for i in range(-14, 2):
-        p = []
         print(i)
         lhs = np.dot(A.T, A) + np.dot(10**i, np.identity(n))
-        rhs = np.dot(A.T, b)
-        p.append(np.linalg.solve(lhs, rhs))
+        rhs = np.dot(A.T, b2)
+        p = np.linalg.solve(lhs, rhs)
         plt.plot(xc, p)
         plt.plot(xc, p1)
         plt.show()
         r = []
         for j in range(len(p)):
             r.append(abs(p[j]-p1[j]))
-        e.append(max(r[0].tolist()))
+        e.append(max(r))
         l.append(10**i)
     plt.plot(l, e)
     plt.xscale('log')
     plt.yscale('log')
     plt.show()
 
-def Plot_func(x, y):
-    for yi in y:
-        plt.plot(x, yi)
-    plt.yscale('log')
-    plt.show()
-
+def Reconstruct_Density(file, K):
+    f = open(file, 'rb')
+    npzfile = np.load(f)
+    #sinus = lambda x: sin(5*pi*x)
+    #y = [sinus(x) for x in npzfile['xc']]
+    xs = Chebyshev2(len(npzfile['xc']), npzfile['a'], npzfile['b'])
+    xq, w = Legendre2(len(npzfile['xc']**2), npzfile['a'], npzfile['b'])
+    A = fredholm_lhs(npzfile['xc'], xs, xq, w, K, npzfile['d'])
+    r = [npzfile['xc']]
+    for i in range(-14, 2):
+        print(i)
+        lhs = np.dot(A.T, A) + np.dot(10**i, np.identity(len(npzfile['xc'])))
+        rhs = np.dot(A.T, npzfile['F'])
+        p = np.linalg.solve(lhs, rhs)
+        #plt.plot(npzfile['xc'], p)
+        r.append(p)
+        #plt.plot(npzfile['xc'], y)
+        #plt.show()
+    return r
 
 '''a = Chebyshev(40)
 p = Density(a)
@@ -190,7 +223,19 @@ Plot_func(x, y)'''
 '''F = pickle.load( open( "F.pkl", "rb" ) )
 Gen_Perturbed(30, F, 2.5)'''
 
-K = lambda x, y, d:  d * (d**2 + (y-x)**2)**(-3/2)
+'''K = lambda x, y, d:  d * (d**2 + (y-x)**2)**(-3/2)
 F = pickle.load( open( "F.pkl", "rb" ) )
-Gen_plot_perturbed(30, F, K, Legendre, 0.25)
-#Tikhonov(30, F, K, Legendre, 0.025)
+#Gen_plot_perturbed(30, F, K, Legendre, 2.5)
+Tikhonov(30, F, K, Legendre, 0.25)'''
+
+K = lambda x, y, d:  d * (d**2 + (y-x)**2)**(-3/2)
+r1 = Reconstruct_Density('q8_1.npz', K)
+r2 = Reconstruct_Density('q8_2.npz', K)
+r3 = Reconstruct_Density('q8_3.npz', K)
+
+for i in range(1, len(r1)):
+    print(-15+i)
+    plt.plot(r1[0], r1[i])
+    plt.plot(r2[0], r2[i])
+    plt.plot(r3[0], r3[i])
+    plt.show()
