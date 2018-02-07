@@ -6,7 +6,7 @@ import scipy.special as ss
 import sympy as sy
 from Test_Example import analytical_solution
 
-def fredholm_rhs (xc, F):
+def fredholm_rhs (xc, F, d):
     '''Set up the RHS of the system
     INPUT :
         xc : defines collocation points
@@ -16,10 +16,10 @@ def fredholm_rhs (xc, F):
     Nc = len(xc)
     b = np.zeros(Nc)
     for i in range(Nc):
-        b[i] = F(xc[i], 0.025)
+        b[i] = F(xc[i], d)
     return b
 
-def fredholm_lhs (xc, xs, xq, w, K):
+def fredholm_lhs (xc, xs, xq, w, K, d):
     '''
     Set up the LHS of the system
     INPUT:
@@ -36,7 +36,7 @@ def fredholm_lhs (xc, xs, xq, w, K):
     for i in range(Nc):
         for j in range(Ns):
             for k in range(len(xq)):
-                A[i][j] += K(xc[i], xq[k]) * w[k] * Lagrange_Basis(j, xq[k], xs, Ns)
+                A[i][j] += K(xc[i], xq[k], d) * w[k] * Lagrange_Basis(j, xq[k], xs, Ns)
     return A
 
 def Chebyshev(n):
@@ -78,12 +78,12 @@ def Density(a):
 def Gen_Error(p, xc, xs, K, F, method):
     x = []
     y = []
-    b = fredholm_rhs(xc, F)
+    b = fredholm_rhs(xc, F, d)
     for i in range(1, 9):
         print(i)
         xq, w = method(2**i)
         x.append(2**i)
-        A = fredholm_lhs(xc, xs, xq, w, K)
+        A = fredholm_lhs(xc, xs, xq, w, K, d)
         Ap = np.dot(A, p).tolist()
         r = []
         for j in range(len(Ap)):
@@ -91,15 +91,15 @@ def Gen_Error(p, xc, xs, K, F, method):
         y.append(max(r))
     return x, y
 
-def Gen_Error_p(start, end, K, F, method):
+def Gen_Error_p(start, end, K, F, method, d):
     x = []
     y = []
     for i in range(start, end+1):
         print(i)
         xc = Chebyshev(i)
-        b = fredholm_rhs(xc, F)
+        b = fredholm_rhs(xc, F, d)
         xq, w = method(i**2)
-        A = fredholm_lhs(xc, xc, xq, w, K)
+        A = fredholm_lhs(xc, xc, xq, w, K, d)
         p = np.linalg.solve(A, b)
         p2 = Density(xc)
         r = []
@@ -109,36 +109,37 @@ def Gen_Error_p(start, end, K, F, method):
         y.append(max(r))
     return x, y
 
-def Gen_Perturbed(n, F):
+def Gen_Perturbed(n, F, d):
     x = []
     y = []
     xc = Chebyshev(n)
-    b = fredholm_rhs(xc, F)
+    b = fredholm_rhs(xc, F, d)
     b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
     plt.plot(xc, b)
     plt.plot(xc, b2)
     plt.show()
 
-def Gen_plot_perturbed(n, F, K, method):
+def Gen_plot_perturbed(n, F, K, method, d):
     xc = Chebyshev(n)
-    b = fredholm_rhs(xc, F)
+    b = fredholm_rhs(xc, F, d)
     b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
     xq, w = method(10*n)
-    A = fredholm_lhs(xc, xc, xq, w, K)
+    A = fredholm_lhs(xc, xc, xq, w, K, d)
     p1 = np.linalg.solve(A, b)
     p2 = np.linalg.solve(A, b2)
     p3 = Density(xc)
     plt.plot(xc, p1)
     plt.plot(xc, p2)
     plt.plot(xc, p3)
+    plt.yscale('log')
     plt.show()
 
-def Tikhonov(n, F, K, method):
+def Tikhonov(n, F, K, method, d):
     xc = Chebyshev(n)
-    b = fredholm_rhs(xc, F)
+    b = fredholm_rhs(xc, F, d)
     b2 = [x*(1+np.random.uniform(-10**-3, 10**-3)) for x in b]
     xq, w = method(10*n)
-    A = fredholm_lhs(xc, xc, xq, w, K)
+    A = fredholm_lhs(xc, xc, xq, w, K, d)
     p1 = Density(xc)
     e = []
     l = []
@@ -148,6 +149,9 @@ def Tikhonov(n, F, K, method):
         lhs = np.dot(A.T, A) + np.dot(10**i, np.identity(n))
         rhs = np.dot(A.T, b)
         p.append(np.linalg.solve(lhs, rhs))
+        plt.plot(xc, p)
+        plt.plot(xc, p1)
+        plt.show()
         r = []
         for j in range(len(p)):
             r.append(abs(p[j]-p1[j]))
@@ -175,22 +179,18 @@ y = [y1, y2]
 Plot_func(x, y)'''
 
 
-'''K1 = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
-K2 = lambda x, y: 0.25 * (0.25**2 + (y-x)**2)**(-3/2)
-K3 = lambda x, y: 2.5 * (2.5**2 + (y-x)**2)**(-3/2)
+'''K = lambda x, y, d: d * (d**2 + (y-x)**2)**(-3/2)
 F = pickle.load( open( "F.pkl", "rb" ) )
-x, y1 = Gen_Error_p(5, 30, K1, F, Legendre)
-x, y2 = Gen_Error_p(5, 30, K2, F, Legendre)
-x, y3 = Gen_Error_p(5, 30, K3, F, Legendre)
+x, y1 = Gen_Error_p(5, 30, K, F, Legendre, 0.025)
+x, y2 = Gen_Error_p(5, 30, K, F, Legendre, 0.25)
+x, y3 = Gen_Error_p(5, 30, K, F, Legendre, 2.5)
 y = [y1, y2, y3]
 Plot_func(x, y)'''
 
 '''F = pickle.load( open( "F.pkl", "rb" ) )
-Gen_Perturbed(30, F)'''
+Gen_Perturbed(30, F, 2.5)'''
 
-K1 = lambda x, y: 0.025 * (0.025**2 + (y-x)**2)**(-3/2)
-K2 = lambda x, y: 0.25 * (0.25**2 + (y-x)**2)**(-3/2)
-K3 = lambda x, y: 2.5 * (2.5**2 + (y-x)**2)**(-3/2)
+K = lambda x, y, d:  d * (d**2 + (y-x)**2)**(-3/2)
 F = pickle.load( open( "F.pkl", "rb" ) )
-#Gen_plot_perturbed(30, F, K3, Legendre)
-Tikhonov(30, F, K3, Legendre)
+Gen_plot_perturbed(30, F, K, Legendre, 0.25)
+#Tikhonov(30, F, K, Legendre, 0.025)
